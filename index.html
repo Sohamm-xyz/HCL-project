@@ -19,7 +19,7 @@ table{border-collapse:collapse;width:100%}th,td{padding:7px;border-bottom:1px so
 .win{color:var(--ac);font-weight:700}
 </style></head><body>
 <h1>Traffic signal moderinisation by Team JAKS- British School, Delhi</h1>
-  <h2>Traffic simulation for South Extension Intersection in South Delhi. Cars Data is read from excel sheet by python program and dispayed using index.html</h2>
+  <h2>Traffic simulation for South Extension Intersection in South Delhi</h2>
   <h2>Formula: Green signal time for a side = cars on that side / total cars x total green</h2>
 <p class="mu">Same peak-hour traffic, two signals. The coloured bar on each road shows how many cars are waiting. Whole hour runs in about a minute.</p>
 <div class="card bar"><button id="go">Start</button><button class="alt" id="reset">Reset</button><span class="mu" id="clock"></span></div>
@@ -35,7 +35,7 @@ table{border-collapse:collapse;width:100%}th,td{padding:7px;border-bottom:1px so
 const CARS=[12000,14000,11000,9500];   // peak cars per hour, Side 1..4
 const SCALE=0.21, FIXED=45, SPEED=60;  // 21% reach the signal; fixed green 45 s; 60x speed
 // ---- Same rules as simple_signal_sim.py ----
-const TOTAL=180,MIN=20,MAX=120,LOST=6,YEL=4,RATE=3.25,END=1800;
+const TOTAL=180,MIN=20,MAX=120,LOST=6,YEL=4,RATE=3.25,END=3600;
 function smartGreen(w){
   const t=w.reduce((a,b)=>a+b,0);
   if(t===0)return [45,45,45,45];

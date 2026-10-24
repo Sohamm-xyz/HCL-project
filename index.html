@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Signal Simulator: Fixed vs Smart</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f7f6f2;--card:#fff;--tx:#1d1d1b;--mu:#6b6a64;--ln:#dcdad2;--ac:#0f6e56}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171716;--card:#222221;--tx:#ecebe6;--mu:#a3a29a;--ln:#3a3a37;--ac:#4fc3a1}}
+:root[data-theme="dark"]{--bg:#171716;--card:#222221;--tx:#ecebe6;--mu:#a3a29a;--ln:#3a3a37;--ac:#4fc3a1}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0 auto;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:14px;max-width:720px}
+h1{font-size:20px;margin:4px 0}h2{font-size:15px;margin:0 0 6px;text-align:center}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:12px;margin:10px 0}
+.mu{color:var(--mu);font-size:14px}.c{text-align:center}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;background:var(--ac);color:#fff}button.alt{background:var(--ln);color:var(--tx)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+canvas{width:100%;height:auto;aspect-ratio:1;display:block;background:var(--bg);border-radius:8px}
+table{border-collapse:collapse;width:100%}th,td{padding:7px;border-bottom:1px solid var(--ln);text-align:right}th:first-child,td:first-child{text-align:left}
+.win{color:var(--ac);font-weight:700}
+</style></head><body>
+<h1>Traffic signal: Fixed vs Smart</h1>
+<p class="mu">Same peak-hour traffic, two signals. The coloured bar on each road shows how many cars are waiting. Whole hour runs in about a minute.</p>
+<div class="card bar"><button id="go">Start</button><button class="alt" id="reset">Reset</button><span class="mu" id="clock"></span></div>
+<div class="two">
+<div class="card"><h2>Fixed timer (old)</h2><canvas id="cvF" width="320" height="320"></canvas><p class="mu c" id="stF"></p></div>
+<div class="card"><h2>Smart timer (new)</h2><canvas id="cvS" width="320" height="320"></canvas><p class="mu c" id="stS"></p></div>
+</div>
+<div class="card" id="fin" hidden><h2>Result after 1 hour</h2><table id="res"></table></div>
+
+<!--SIM-->
+<script>
+// ---- Settings: change these ----
+const CARS=[12000,14000,11000,9500];   // peak cars per hour, Side 1..4
+const SCALE=0.21, FIXED=45, SPEED=60;  // 21% reach the signal; fixed green 45 s; 60x speed
+// ---- Same rules as simple_signal_sim.py ----
+const TOTAL=180,MIN=20,MAX=120,LOST=6,YEL=4,RATE=3.25,END=3600;
+function smartGreen(w){
+  const t=w.reduce((a,b)=>a+b,0);
+  if(t===0)return [45,45,45,45];
+  let g=w.map(x=>x/t*TOTAL);                         // 1. share of cars waiting
+  g=g.map(x=>Math.min(MAX,Math.max(MIN,x)));         // 2. apply min/max
+  const s=g.reduce((a,b)=>a+b,0);
+  return g.map(x=>x*TOTAL/s);                        // 3. make total 180
+}
+function newSim(smart,arrive){return{smart,arrive,q:[0,0,0,0],cleared:0,carSec:0,longest:0,arrived:0,t:0,road:0,s:0,greens:[FIXED,FIXED,FIXED,FIXED]}}
+function step(m){                                   // advance one second
+  if(m.t>=END)return;
+  if(m.road===0&&m.s===0)m.greens=m.smart?smartGreen(m.q):[FIXED,FIXED,FIXED,FIXED];
+  const gs=Math.floor(m.greens[m.road]);
+  for(let r=0;r<4;r++){m.q[r]+=m.arrive[r];m.arrived+=m.arrive[r]}   // cars arrive
+  if(m.s<gs){const n=Math.min(m.q[m.road],RATE);m.q[m.road]-=n;m.cleared+=n}  // cars leave
+  m.carSec+=m.q[0]+m.q[1]+m.q[2]+m.q[3];m.longest=Math.max(m.longest,...m.q);
+  m.t++;m.s++;
+  if(m.s>=gs+LOST){m.s=0;m.road=(m.road+1)%4}
+}
+</script>
+<!--/SIM-->
+<script>
+const $=id=>document.getElementById(id);
+const COL=["#e0752d","#3b82c4","#a06ad0","#2f9e6e"],C=160,RW=30;
+// each road: point on its stop line, sideways direction, driving direction
+const SIDE=[{b:[C-RW,C+RW],l:[1,0],d:[0,-1]},{b:[C,C-RW],l:[1,0],d:[0,1]},{b:[C+RW,C],l:[0,1],d:[-1,0]},{b:[C-RW,C-RW],l:[0,1],d:[1,0]}];
+const LAB=[[C-RW+15,314],[C+15,12],[286,C+RW+16],[34,C-RW-6]];
+const pt=(i,lat,al)=>{const s=SIDE[i];return[s.b[0]+s.l[0]*lat+s.d[0]*al,s.b[1]+s.l[1]*lat+s.d[1]*al]};
+let F,S,running=false,acc=0,last=0;
+
+function draw(cv,m){
+  const c=cv.getContext("2d");c.clearRect(0,0,320,320);
+  c.fillStyle="#5b5b57";c.fillRect(C-RW,0,2*RW,320);c.fillRect(0,C-RW,320,2*RW);
+  const gs=Math.floor(m.greens[m.road]);
+  for(let i=0;i<4;i++){
+    const len=Math.min(m.q[i]/460*125,125),a=pt(i,3,0),b=pt(i,27,-len);   // queue bar
+    c.fillStyle=COL[i];c.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(a[0]-b[0])||1,Math.abs(a[1]-b[1])||1);
+    const on=m.road===i&&m.s<gs,yel=m.road===i&&m.s>=gs&&m.s<gs+YEL,lp=pt(i,15,10);   // light
+    c.fillStyle=on?"#2ecc71":yel?"#f1c40f":"#e74c3c";c.beginPath();c.arc(lp[0],lp[1],7,0,7);c.fill();
+    c.fillStyle=getComputedStyle(document.body).color;c.font="bold 13px system-ui";c.textAlign="center";
+    c.fillText(Math.round(m.q[i])+" cars",LAB[i][0],LAB[i][1]);
+  }
+}
+function render(){
+  draw($("cvF"),F);draw($("cvS"),S);
+  for(const [id,m] of [["stF",F],["stS",S]])$(id).textContent=`Cleared: ${Math.round(m.cleared).toLocaleString()}  ·  Average wait: ${Math.round(m.arrived?m.carSec/m.arrived:0)} s`;
+  $("clock").textContent=`Time ${Math.floor(F.t/60)}:${String(F.t%60).padStart(2,"0")} of 60:00`;
+}
+function better(f,s,lowIsGood){const d=lowIsGood?(f-s)/f:(s-f)/f;return `<td class="${d>0.005?"win":""}">${Math.round(d*100)}%</td>`}
+function finish(){
+  const fw=F.carSec/F.arrived,sw=S.carSec/S.arrived;
+  $("res").innerHTML=`<tr><th></th><th>Fixed</th><th>Smart</th><th>Better by</th></tr>
+  <tr><td>Cars cleared</td><td>${Math.round(F.cleared).toLocaleString()}</td><td>${Math.round(S.cleared).toLocaleString()}</td>${better(F.cleared,S.cleared,false)}</tr>
+  <tr><td>Average wait (s)</td><td>${Math.round(fw)}</td><td>${Math.round(sw)}</td>${better(fw,sw,true)}</tr>
+  <tr><td>Longest queue (cars)</td><td>${Math.round(F.longest)}</td><td>${Math.round(S.longest)}</td>${better(F.longest,S.longest,true)}</tr>`;
+  $("fin").hidden=false;
+}
+function reset(){
+  running=false;acc=0;$("go").textContent="Start";$("fin").hidden=true;
+  const arrive=CARS.map(c=>c*SCALE/3600);F=newSim(false,arrive);S=newSim(true,arrive);render();
+}
+function frame(ts){
+  if(running){acc+=Math.min((ts-last)/1000,0.1)*SPEED;while(acc>=1){step(F);step(S);acc--}
+    if(F.t>=END){running=false;$("go").textContent="Start";finish()}render()}
+  last=ts;requestAnimationFrame(frame);
+}
+$("go").onclick=()=>{if(F.t>=END)reset();running=!running;$("go").textContent=running?"Pause":"Start"};
+$("reset").onclick=reset;reset();requestAnimationFrame(frame);
+</script></body></html>
